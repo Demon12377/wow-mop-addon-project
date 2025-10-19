@@ -310,7 +310,7 @@ function validate_parameters()
         post_button:Disable()
         return
     end
-    if not C_AuctionHouse.CanQuery() then
+    if not (C_AuctionHouse and C_AuctionHouse.CanQuery()) then
         post_button:Disable()
         return
     end

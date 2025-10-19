@@ -53,10 +53,11 @@ function M.container_item(bag, slot)
 end
 
 function M.auction_sell_item()
-    local sell_item_location = C_AuctionHouse.GetSellItemLocation()
-    if sell_item_location then
-        local item_info = C_Item.GetItemInfo(sell_item_location)
-        local container_info = C_Container.GetContainerItemInfo(sell_item_location:GetBagAndSlot())
+    if C_AuctionHouse then
+        local sell_item_location = C_AuctionHouse.GetSellItemLocation()
+        if sell_item_location then
+            local item_info = C_Item.GetItemInfo(sell_item_location)
+            local container_info = C_Container.GetContainerItemInfo(sell_item_location:GetBagAndSlot())
         return {
             name = item_info.itemName,
             texture = item_info.itemIcon,
@@ -72,10 +73,11 @@ end
 function M.auction(index, query_type)
     query_type = query_type or 'list'
 
-    local auction_info = C_AuctionHouse.GetItemInfoByIndex(query_type, index)
+    if C_AuctionHouse then
+        local auction_info = C_AuctionHouse.GetItemInfoByIndex(query_type, index)
 
-    if auction_info and (aux.account_data.ignore_owner or auction_info.owner) then
-        local link = auction_info.itemLink
+        if auction_info and (aux.account_data.ignore_owner or auction_info.owner) then
+            local link = auction_info.itemLink
         if not link then
             return
         end

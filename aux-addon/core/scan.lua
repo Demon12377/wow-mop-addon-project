@@ -24,10 +24,12 @@ end
 
 function auctions(type)
     local auctions = {}
-    for i = 1, C_AuctionHouse.GetNumResults() do
-        local auction_record = info.auction(i, type)
-        if auction_record then
-            auctions[i] = auction_record
+    if C_AuctionHouse then
+        for i = 1, C_AuctionHouse.GetNumResults() do
+            local auction_record = info.auction(i, type)
+            if auction_record then
+                auctions[i] = auction_record
+            end
         end
     end
     return pairs(auctions)
@@ -76,16 +78,22 @@ function get_query()
 end
 
 function total_pages()
-    local total_auctions = C_AuctionHouse.GetNumResults()
-    local page_size = state.params.get_all and total_auctions or PAGE_SIZE
-    return page_size == 0 and 0 or ceil(total_auctions / page_size)
+    if C_AuctionHouse then
+        local total_auctions = C_AuctionHouse.GetNumResults()
+        local page_size = state.params.get_all and total_auctions or PAGE_SIZE
+        return page_size == 0 and 0 or ceil(total_auctions / page_size)
+    end
+    return 0
 end
 
 function last_page()
-    local total_auctions = C_AuctionHouse.GetNumResults()
-    local last_page = max(total_pages(total_auctions) - 1, 0)
-    local last_page_limit = get_query().blizzard_query.last_page or last_page
-    return min(last_page_limit, last_page)
+    if C_AuctionHouse then
+        local total_auctions = C_AuctionHouse.GetNumResults()
+        local last_page = max(total_pages(total_auctions) - 1, 0)
+        local last_page_limit = get_query().blizzard_query.last_page or last_page
+        return min(last_page_limit, last_page)
+    end
+    return 0
 end
 
 function scan()
@@ -112,7 +120,7 @@ function scan()
 end
 
 function submit_query(page)
-    while not C_AuctionHouse.CanQuery() do
+    while not (C_AuctionHouse and C_AuctionHouse.CanQuery()) do
         aux.coro_wait()
     end
 
@@ -163,7 +171,7 @@ function scan_page(page)
     local updated, last_update
 
     state.listener_id = aux.event_listener('AUCTION_HOUSE_BROWSE_RESULTS_UPDATED', function()
-        if not last_update then
+        if not last_update and C_AuctionHouse then
             local page_size = C_AuctionHouse.GetNumResults()
             for i = 1, page_size do
                 pending[i] = true

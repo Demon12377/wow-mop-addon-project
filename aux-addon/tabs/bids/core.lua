@@ -7,7 +7,7 @@ local scan = require 'aux.core.scan'
 local tab = aux.tab 'Bids'
 
 function aux.event.AUX_LOADED()
-    aux.event_listener('AUCTION_HOUSE_BIDS_UPDATED', function()
+    aux.event_listener('AUCTION_BIDDER_ITEM_LIST_UPDATE', function()
         locked = {}
         refresh = true
     end)
@@ -32,19 +32,11 @@ function tab.CLOSE()
 end
 
 function M.scan_auctions()
-    C_AuctionHouse.QueryBids()
-end
-
-function aux.event.AUCTION_HOUSE_BIDS_UPDATED()
     local auctions = {}
-    for i = 1, C_AuctionHouse.GetNumBids() do
-        local auction = info.auction(i, 'bidder')
-        if auction then
-            tinsert(auctions, auction)
-        end
+    for _, auction in scan.bidder_auctions() do
+        tinsert(auctions, auction)
     end
     listing:SetDatabase(auctions)
-    listing:Sort()
 end
 
 function place_bid(buyout)
@@ -70,7 +62,7 @@ function on_update()
 
     local selection = listing:GetSelection()
     if selection then
-        if not C_AuctionHouse.CanQuery() then
+        if not (C_AuctionHouse and C_AuctionHouse.CanQuery()) then
             bid_button:Disable()
             buyout_button:Disable()
             return

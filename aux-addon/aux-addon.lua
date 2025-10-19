@@ -36,7 +36,7 @@ do
 			for _, f in ipairs(handlers2) do f(arg1, ...) end
             sort(account_data.auctionable_items, function(a, b) return strlen(a) < strlen(b) or (strlen(a) == strlen(b) and a < b) end)
             print('loaded - /aux')
-		else
+		elseif _M[event] then
 			_M[event](arg1, ...)
 		end
 	end)

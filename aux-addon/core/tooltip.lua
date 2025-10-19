@@ -148,9 +148,11 @@ function game_tooltip_hooks.SetItemByID(itemId)
 end
 
 function game_tooltip_hooks.SetAuctionItem(type, index)
-    local auction_info = C_AuctionHouse.GetItemInfoByIndex(type, index)
-    if auction_info and auction_info.itemLink then
-        extend_tooltip(GameTooltip, auction_info.itemLink, auction_info.stackCount)
+    if C_AuctionHouse then
+        local auction_info = C_AuctionHouse.GetItemInfoByIndex(type, index)
+        if auction_info and auction_info.itemLink then
+            extend_tooltip(GameTooltip, auction_info.itemLink, auction_info.stackCount)
+        end
     end
 end
 
@@ -237,11 +239,13 @@ function game_tooltip_hooks.SetTradeSkillItem(skill, slot)
 end
 
 function game_tooltip_hooks.SetAuctionSellItem()
-    local sell_item_location = C_AuctionHouse.GetSellItemLocation()
-    if sell_item_location then
-        local link = C_Item.GetItemLink(sell_item_location)
-        if link then
-            extend_tooltip(GameTooltip, link, C_Container.GetContainerItemInfo(sell_item_location:GetBagAndSlot()).stackCount)
+    if C_AuctionHouse then
+        local sell_item_location = C_AuctionHouse.GetSellItemLocation()
+        if sell_item_location then
+            local link = C_Item.GetItemLink(sell_item_location)
+            if link then
+                extend_tooltip(GameTooltip, link, C_Container.GetContainerItemInfo(sell_item_location:GetBagAndSlot()).stackCount)
+            end
         end
     end
 end
