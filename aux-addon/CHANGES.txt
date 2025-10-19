@@ -1,0 +1,10 @@
+lightweight tag d91dc2424036693e05fbc78b7fdb0f854d49a57d v1.3.10
+Author:	Simon Hirsig <simon.hirsig@gmail.com>
+Date:	Wed Jul 9 12:38:03 2025 +0200
+
+commit d91dc2424036693e05fbc78b7fdb0f854d49a57d
+Author: Simon Hirsig <simon.hirsig@gmail.com>
+Date:   Wed Jul 9 12:38:03 2025 +0200
+
+    client version bump
+
