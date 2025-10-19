@@ -2,28 +2,141 @@ select(2, ...) 'aux.util.info'
 
 local aux = require 'aux'
 
+local M = {}
+
 CreateFrame('GameTooltip', 'AuxTooltip', nil, 'GameTooltipTemplate')
 
-do
-    local map = { [1] = 2, [2] = 8, [3] = 24 }
-    function M.duration_hours(duration_code)
-        return map[duration_code]
+-- Local function declarations to solve dependency issues
+local tooltip
+local tooltip_match
+local tooltip_find
+local auctionable
+local item_charges
+local max_item_charges
+local item
+local parse_link
+
+-- Definition of local functions
+parse_link = function(link)
+    local _, _, item_id, enchant_id, suffix_id, unique_id, name = strfind(link, '|Hitem:(%d*):(%d*):::::(%d*):(%d*)[:0-9]*|h%[(.-)%]|h')
+    return tonumber(item_id) or 0, tonumber(suffix_id) or 0, tonumber(unique_id) or 0, tonumber(enchant_id) or 0, name
+end
+
+item = function(item_id, suffix_id)
+    local itemstring = 'item:' .. (item_id or 0) .. '::::::' .. (suffix_id or 0)
+    local name, link, quality, level, requirement, class, subclass, max_stack, slot, texture, sell_price = GetItemInfo(itemstring)
+    return name and {
+        name = name,
+        link = link,
+        quality = quality,
+        level = level,
+        requirement = requirement,
+        class = class,
+        subclass = subclass,
+        slot = slot,
+        max_stack = max_stack,
+        texture = texture,
+        sell_price = sell_price
+    }
+end
+
+tooltip = function(setter, arg1, arg2)
+    AuxTooltip:SetOwner(UIParent, 'ANCHOR_NONE')
+    AuxTooltip:ClearLines()
+    if setter == 'auction' then
+	    AuxTooltip:SetAuctionItem(arg1, arg2)
+    elseif setter == 'bag' then
+	    AuxTooltip:SetBagItem(arg1, arg2)
+    elseif setter == 'inventory' then
+	    AuxTooltip:SetInventoryItem(arg1, arg2)
+    elseif setter == 'link' then
+	    AuxTooltip:SetHyperlink(arg1)
     end
+    local tooltip_lines = {}
+    for i = 1, AuxTooltip:NumLines() do
+        for side in aux.iter('Left', 'Right') do
+            local text = _G['AuxTooltipText' .. side .. i]:GetText()
+            if text then
+                tinsert(tooltip_lines, text)
+            end
+        end
+    end
+    return tooltip_lines
+end
+
+tooltip_match = function(entry, tooltip_lines)
+    return aux.any(tooltip_lines, function(text)
+        return strupper(entry) == strupper(text)
+    end)
+end
+
+tooltip_find = function(pattern, tooltip_lines)
+    local count = 0
+    for _, entry in pairs(tooltip_lines) do
+        if strfind(entry, pattern) then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+auctionable = function(tooltip_lines, quality)
+    local status = tooltip_lines[2]
+    return (not quality or quality < 6)
+            and status ~= ITEM_BIND_ON_PICKUP
+            and status ~= ITEM_BIND_QUEST
+            and status ~= ITEM_SOULBOUND
+            and (not tooltip_match(ITEM_CONJURED, tooltip_lines) or tooltip_find(ITEM_MIN_LEVEL, tooltip_lines) > 1)
+end
+
+item_charges = function(tooltip_lines)
+    local patterns = {}
+    for i = 1, 10 do
+        patterns[aux.pluralize(format(ITEM_SPELL_CHARGES, i))] = i
+    end
+    for _, entry in pairs(tooltip_lines) do
+        if patterns[entry] then
+            return patterns[entry]
+        end
+    end
+end
+
+max_item_charges = function(item_id)
+	local data = {
+		[20744] = 5, [20746] = 5, [20750] = 5, [20749] = 5, -- wizard oil
+		[20745] = 5, [20747] = 5, [20748] = 5, -- mana oil
+		[4388] = 5, -- discombobulator
+		[4381] = 10, [18637] = 10, -- recombobulator
+        [4376] = 5, [4386] = 5, -- deflector
+	}
+	return data[item_id]
+end
+
+local function is_player(name)
+    if not name then return false end
+    local _, class = GetPlayerInfoByRealm(name)
+    return class ~= nil
+end
+
+-- Module functions
+function M.duration_hours(duration_code)
+    local map = { [1] = 2, [2] = 8, [3] = 24 }
+    return map[duration_code]
 end
 
 function M.container_item(bag, slot)
 	local link = GetContainerItemLink(bag, slot)
     if link then
-        local item_id, suffix_id, unique_id, enchant_id = M.parse_link(link)
-        local item_info = M.item(item_id, suffix_id, unique_id, enchant_id)
+        local item_id, suffix_id, unique_id, enchant_id = parse_link(link)
+        local item_info = item(item_id, suffix_id)
         if item_info then
             local texture, count, locked, quality, readable, lootable = GetContainerItemInfo(bag, slot)
             local durability, max_durability = GetContainerItemDurability(bag, slot)
-            local tooltip = M.tooltip('bag', bag, slot)
-            local max_charges = M.max_item_charges(item_id)
-            local charges = max_charges and M.item_charges(tooltip)
-            local auctionable = M.auctionable(tooltip, quality) and durability == max_durability and charges == max_charges and not lootable
-            if max_charges and not charges then
+            local tooltip_lines = tooltip('bag', bag, slot)
+            local max_charges_val = max_item_charges(item_id)
+            local charges_val = max_charges_val and item_charges(tooltip_lines)
+            local auctionable_val = auctionable(tooltip_lines, quality) and durability == max_durability and charges_val == max_charges_val and not lootable
+            if max_charges_val and not charges_val then
                 return
             end
             return {
@@ -31,29 +144,25 @@ function M.container_item(bag, slot)
                 suffix_id = suffix_id,
                 unique_id = unique_id,
                 enchant_id = enchant_id,
-
                 link = link,
                 item_key = item_id .. ':' .. suffix_id,
-
                 name = item_info.name,
                 texture = texture,
                 level = item_info.level,
                 quality = quality,
                 max_stack = item_info.max_stack,
-
                 count = count,
                 locked = locked,
                 readable = readable,
-                auctionable = auctionable,
-
-                tooltip = tooltip,
+                auctionable = auctionable_val,
+                tooltip = tooltip_lines,
             }
         end
     end
 end
 
 function M.auction_sell_item()
-	local name, texture, count, quality, usable, vendor_price = GetAuctionSellItemInfo()
+    local name, texture, count, quality, usable, vendor_price = GetAuctionSellItemInfo()
     if name then
         return {
 			name = name,
@@ -75,11 +184,9 @@ function M.auction(index, query_type)
         if not link then
             return
         end
-
-        local item_id, suffix_id, unique_id, enchant_id = M.parse_link(link)
-
+        local item_id, suffix_id, unique_id, enchant_id = parse_link(link)
 	local duration = GetAuctionItemTimeLeft(query_type, index)
-        local tooltip = M.tooltip('auction', query_type, index)
+        local tooltip_lines = tooltip('auction', query_type, index)
         local blizzard_bid = high_bid > 0 and high_bid or start_price
         local bid_price = high_bid > 0 and (high_bid + min_increment) or start_price
         return {
@@ -87,17 +194,14 @@ function M.auction(index, query_type)
             suffix_id = suffix_id,
             unique_id = unique_id,
             enchant_id = enchant_id,
-
             link = link,
             item_key = item_id .. ':' .. suffix_id,
             search_signature = aux.join({item_id, suffix_id, enchant_id, start_price, buyout_price, bid_price, count, sale_status == 1 and 0 or duration, query_type == 'owner' and high_bidder or (high_bidder and 1 or 0), sale_status, aux.account_data.ignore_owner and (is_player(owner) and 0 or 1) or (owner or '?')}, ':'),
             sniping_signature = aux.join({item_id, suffix_id, enchant_id, start_price, buyout_price, count, aux.account_data.ignore_owner and (is_player(owner) and 0 or 1) or (owner or '?')}, ':'),
-
             name = name,
             texture = texture,
             quality = quality,
             requirement = level,
-
             count = count,
             start_price = start_price,
             high_bid = high_bid,
@@ -113,8 +217,7 @@ function M.auction(index, query_type)
             sale_status = sale_status,
             duration = duration,
             usable = usable,
-
-            tooltip = tooltip,
+            tooltip = tooltip_lines,
         }
     end
 end
@@ -135,24 +238,8 @@ function M.set_tooltip(itemstring, owner, anchor)
     GameTooltip:SetHyperlink(itemstring)
 end
 
-function M.tooltip_match(entry, tooltip)
-    return aux.any(tooltip, function(text)
-        return strupper(entry) == strupper(text)
-    end)
-end
-
-function M.tooltip_find(pattern, tooltip)
-    local count = 0
-    for _, entry in pairs(tooltip) do
-        if strfind(entry, pattern) then
-            count = count + 1
-        end
-    end
-    return count
-end
-
 function M.display_name(item_id, no_brackets, no_color)
-	local item_info = M.item(item_id)
+	local item_info = item(item_id)
     if item_info then
         local name = item_info.name
         if not no_brackets then
@@ -165,93 +252,9 @@ function M.display_name(item_id, no_brackets, no_color)
     end
 end
 
-function M.auctionable(tooltip, quality)
-    local status = tooltip[2]
-    return (not quality or quality < 6)
-            and status ~= ITEM_BIND_ON_PICKUP
-            and status ~= ITEM_BIND_QUEST
-            and status ~= ITEM_SOULBOUND
-            and (not M.tooltip_match(ITEM_CONJURED, tooltip) or M.tooltip_find(ITEM_MIN_LEVEL, tooltip) > 1)
-end
-
-function M.tooltip(setter, arg1, arg2)
-    AuxTooltip:SetOwner(UIParent, 'ANCHOR_NONE')
-    AuxTooltip:ClearLines()
-    if setter == 'auction' then
-	    AuxTooltip:SetAuctionItem(arg1, arg2)
-    elseif setter == 'bag' then
-	    AuxTooltip:SetBagItem(arg1, arg2)
-    elseif setter == 'inventory' then
-	    AuxTooltip:SetInventoryItem(arg1, arg2)
-    elseif setter == 'link' then
-	    AuxTooltip:SetHyperlink(arg1)
-    end
-    local tooltip = {}
-    for i = 1, AuxTooltip:NumLines() do
-        for side in aux.iter('Left', 'Right') do
-            local text = _G['AuxTooltipText' .. side .. i]:GetText()
-            if text then
-                tinsert(tooltip, text)
-            end
-        end
-    end
-    return tooltip
-end
-
-do
-    local patterns = {}
-    for i = 1, 10 do
-        patterns[aux.pluralize(format(ITEM_SPELL_CHARGES, i))] = i
-    end
-
-	function M.item_charges(tooltip)
-        for _, entry in pairs(tooltip) do
-            if patterns[entry] then
-                return patterns[entry]
-            end
-	    end
-	end
-end
-
-do
-	local data = {
-		[20744] = 5, [20746] = 5, [20750] = 5, [20749] = 5,
-		[20745] = 5, [20747] = 5, [20748] = 5,
-		[4388] = 5,
-		[4381] = 10, [18637] = 10,
-        [4376] = 5, [4386] = 5,
-	}
-	function M.max_item_charges(item_id)
-	    return data[item_id]
-	end
-end
-
 function M.item_key(link)
-    local item_id, suffix_id = M.parse_link(link)
+    local item_id, suffix_id = parse_link(link)
     return item_id .. ':' .. suffix_id
-end
-
-function M.parse_link(link)
-    local _, _, item_id, enchant_id, suffix_id, unique_id, name = strfind(link, '|Hitem:(%d*):(%d*):::::(%d*):(%d*)[:0-9]*|h%[(.-)%]|h')
-    return tonumber(item_id) or 0, tonumber(suffix_id) or 0, tonumber(unique_id) or 0, tonumber(enchant_id) or 0, name
-end
-
-function M.item(item_id, suffix_id)
-    local itemstring = 'item:' .. (item_id or 0) .. '::::::' .. (suffix_id or 0)
-    local name, link, quality, level, requirement, class, subclass, max_stack, slot, texture, sell_price = GetItemInfo(itemstring)
-    return name and {
-        name = name,
-        link = link,
-        quality = quality,
-        level = level,
-        requirement = requirement,
-        class = class,
-        subclass = subclass,
-        slot = slot,
-        max_stack = max_stack,
-        texture = texture,
-        sell_price = sell_price
-    }
 end
 
 function M.category_index(category)
@@ -304,8 +307,14 @@ function M.inventory()
 	end
 end
 
-function is_player(name)
-    if not name then return false end
-    local _, class = GetPlayerInfoByRealm(name)
-    return class ~= nil
-end
+-- Assign local functions to the module for external access
+M.parse_link = parse_link
+M.item = item
+M.tooltip = tooltip
+M.tooltip_match = tooltip_match
+M.tooltip_find = tooltip_find
+M.auctionable = auctionable
+M.item_charges = item_charges
+M.max_item_charges = max_item_charges
+
+return M
