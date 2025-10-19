@@ -53,37 +53,37 @@ function M.container_item(bag, slot)
 end
 
 function M.auction_sell_item()
-	for name, texture, count, quality, usable, vendor_price in GetAuctionSellItemInfo do
+    local sell_item_location = C_AuctionHouse.GetSellItemLocation()
+    if sell_item_location then
+        local item_info = C_Item.GetItemInfo(sell_item_location)
+        local container_info = C_Container.GetContainerItemInfo(sell_item_location:GetBagAndSlot())
         return {
-			name = name,
-			texture = texture,
-            quality = quality,
-			count = count,
-			usable = usable,
-            vendor_price = vendor_price,
+            name = item_info.itemName,
+            texture = item_info.itemIcon,
+            quality = item_info.itemQuality,
+            count = container_info.stackCount,
+            usable = item_info.isUsable,
+            vendor_price = item_info.itemSellPrice,
         }
-	end
+    end
+    return {}
 end
 
 function M.auction(index, query_type)
     query_type = query_type or 'list'
 
-    local name, texture, count, quality, usable, level, _, start_price, min_increment, buyout_price, high_bid, high_bidder, _, owner, _, sale_status, item_id, has_all_info = GetAuctionItemInfo(query_type, index)
+    local auction_info = C_AuctionHouse.GetItemInfoByIndex(query_type, index)
 
---    local ignore_owner = get_state().params.ignore_owner or aux.account_data.ignore_owner TODO
-
-    if has_all_info and (aux.account_data.ignore_owner or owner) then
-        local link = GetAuctionItemLink(query_type, index)
+    if auction_info and (aux.account_data.ignore_owner or auction_info.owner) then
+        local link = auction_info.itemLink
         if not link then
             return
         end
 
         local item_id, suffix_id, unique_id, enchant_id = parse_link(link)
+        local blizzard_bid = auction_info.highBid > 0 and auction_info.highBid or auction_info.startPrice
+        local bid_price = auction_info.highBid > 0 and (auction_info.highBid + auction_info.minIncrement) or auction_info.startPrice
 
-    	local duration = GetAuctionItemTimeLeft(query_type, index)
-        local tooltip = tooltip('auction', query_type, index)
-        local blizzard_bid = high_bid > 0 and high_bid or start_price
-        local bid_price = high_bid > 0 and (high_bid + min_increment) or start_price
         return {
             item_id = item_id,
             suffix_id = suffix_id,
@@ -92,31 +92,29 @@ function M.auction(index, query_type)
 
             link = link,
             item_key = item_id .. ':' .. suffix_id,
-            search_signature = aux.join({item_id, suffix_id, enchant_id, start_price, buyout_price, bid_price, count, sale_status == 1 and 0 or duration, query_type == 'owner' and high_bidder or (high_bidder and 1 or 0), sale_status, aux.account_data.ignore_owner and (is_player(owner) and 0 or 1) or (owner or '?')}, ':'),
-            sniping_signature = aux.join({item_id, suffix_id, enchant_id, start_price, buyout_price, count, aux.account_data.ignore_owner and (is_player(owner) and 0 or 1) or (owner or '?')}, ':'),
+            search_signature = aux.join({item_id, suffix_id, enchant_id, auction_info.startPrice, auction_info.buyoutPrice, bid_price, auction_info.stackCount, auction_info.timeLeft, query_type == 'owner' and auction_info.highBidder or (auction_info.highBidder and 1 or 0), auction_info.saleStatus, aux.account_data.ignore_owner and (is_player(auction_info.owner) and 0 or 1) or (auction_info.owner or '?')}, ':'),
+            sniping_signature = aux.join({item_id, suffix_id, enchant_id, auction_info.startPrice, auction_info.buyoutPrice, auction_info.stackCount, aux.account_data.ignore_owner and (is_player(auction_info.owner) and 0 or 1) or (auction_info.owner or '?')}, ':'),
 
-            name = name,
-            texture = texture,
-            quality = quality,
-            requirement = level,
+            name = auction_info.name,
+            texture = auction_info.texture,
+            quality = auction_info.quality,
+            requirement = auction_info.level,
 
-            count = count,
-            start_price = start_price,
-            high_bid = high_bid,
-            min_increment = min_increment,
+            count = auction_info.stackCount,
+            start_price = auction_info.startPrice,
+            high_bid = auction_info.highBid,
+            min_increment = auction_info.minIncrement,
             blizzard_bid = blizzard_bid,
             bid_price = bid_price,
-            buyout_price = buyout_price,
-            unit_blizzard_bid = blizzard_bid / count,
-            unit_bid_price = bid_price / count,
-            unit_buyout_price = buyout_price / count,
-            high_bidder = high_bidder,
-            owner = owner,
-            sale_status = sale_status,
-            duration = duration,
-            usable = usable,
-
-            tooltip = tooltip,
+            buyout_price = auction_info.buyoutPrice,
+            unit_blizzard_bid = blizzard_bid / auction_info.stackCount,
+            unit_bid_price = bid_price / auction_info.stackCount,
+            unit_buyout_price = auction_info.buyoutPrice / auction_info.stackCount,
+            high_bidder = auction_info.highBidder,
+            owner = auction_info.owner,
+            sale_status = auction_info.saleStatus,
+            duration = auction_info.timeLeft,
+            usable = auction_info.usable,
         }
     end
 end

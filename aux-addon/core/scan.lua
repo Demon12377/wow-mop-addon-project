@@ -24,7 +24,7 @@ end
 
 function auctions(type)
     local auctions = {}
-    for i = 1, GetNumAuctionItems(type) do
+    for i = 1, C_AuctionHouse.GetNumResults() do
         local auction_record = info.auction(i, type)
         if auction_record then
             auctions[i] = auction_record
@@ -76,15 +76,13 @@ function get_query()
 end
 
 function total_pages()
-    local page_size, total_auctions = GetNumAuctionItems'list'
-    if not state.params.get_all then
-        page_size = PAGE_SIZE
-    end
+    local total_auctions = C_AuctionHouse.GetNumResults()
+    local page_size = state.params.get_all and total_auctions or PAGE_SIZE
     return page_size == 0 and 0 or ceil(total_auctions / page_size)
 end
 
 function last_page()
-    local _, total_auctions = GetNumAuctionItems'list'
+    local total_auctions = C_AuctionHouse.GetNumResults()
     local last_page = max(total_pages(total_auctions) - 1, 0)
     local last_page_limit = get_query().blizzard_query.last_page or last_page
     return min(last_page_limit, last_page)
@@ -114,7 +112,7 @@ function scan()
 end
 
 function submit_query(page)
-    while not CanSendAuctionQuery() do
+    while not C_AuctionHouse.CanQuery() do
         aux.coro_wait()
     end
 
@@ -129,22 +127,23 @@ function submit_query(page)
     else
         -- not filtering by category, leave nil for all
     end
+    local sorts = {}
     if state.params.sort_type then
-        SortAuctionSetSort('list', state.params.sort_type, state.params.sort_reverse)
-    else
-        SortAuctionClearSort('list')
+        sorts = {{sortOrder = state.params.sort_type, reverseSort = state.params.sort_reverse}}
     end
-    QueryAuctionItems(
-        blizzard_query.name,
-        blizzard_query.min_level,
-        blizzard_query.max_level,
-        page,
-        blizzard_query.usable,
-        blizzard_query.quality,
-        state.params.get_all,
-        blizzard_query.class and blizzard_query.class ~= 1 and blizzard_query.class ~= 2 and blizzard_query.exact, -- Excluding suffix items
-        category_filter
-    )
+
+    local query = {
+      page = page,
+      searchString = blizzard_query.name,
+      minLevel = blizzard_query.min_level,
+      maxLevel = blizzard_query.max_level,
+      usable = blizzard_query.usable,
+      quality = blizzard_query.quality,
+      getAll = state.params.get_all,
+      exactMatch = blizzard_query.class and blizzard_query.class ~= 1 and blizzard_query.class ~= 2 and blizzard_query.exact, -- Excluding suffix items
+      sorts = sorts,
+    }
+    C_AuctionHouse.SendBrowseQuery(query)
 end
 
 function process_auction(auction, index, page)
@@ -163,9 +162,9 @@ function scan_page(page)
     local pending = {}
     local updated, last_update
 
-    state.listener_id = aux.event_listener('AUCTION_ITEM_LIST_UPDATE', function()
+    state.listener_id = aux.event_listener('AUCTION_HOUSE_BROWSE_RESULTS_UPDATED', function()
         if not last_update then
-            local page_size = GetNumAuctionItems'list'
+            local page_size = C_AuctionHouse.GetNumResults()
             for i = 1, page_size do
                 pending[i] = true
             end
