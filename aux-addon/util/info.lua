@@ -12,18 +12,18 @@ do
 end
 
 function M.container_item(bag, slot)
-	local link = C_Container.GetContainerItemLink(bag, slot)
+	local link = GetContainerItemLink(bag, slot)
     if link then
-        local item_id, suffix_id, unique_id, enchant_id = parse_link(link)
-        local item_info = item(item_id, suffix_id, unique_id, enchant_id)
-        if item_info then -- TODO apparently this can be undefined
-            local containerInfo = C_Container.GetContainerItemInfo(bag, slot) -- TODO quality not working?
-            local durability, max_durability = C_Container.GetContainerItemDurability(bag, slot)
-            local tooltip = tooltip('bag', bag, slot)
-            local max_charges = max_item_charges(item_id)
-            local charges = max_charges and item_charges(tooltip)
-            local auctionable = auctionable(tooltip) and durability == max_durability and charges == max_charges and not lootable
-            if max_charges and not charges then -- TODO find better fix
+        local item_id, suffix_id, unique_id, enchant_id = M.parse_link(link)
+        local item_info = M.item(item_id, suffix_id, unique_id, enchant_id)
+        if item_info then
+            local texture, count, locked, quality, readable, lootable = GetContainerItemInfo(bag, slot)
+            local durability, max_durability = GetContainerItemDurability(bag, slot)
+            local tooltip = M.tooltip('bag', bag, slot)
+            local max_charges = M.max_item_charges(item_id)
+            local charges = max_charges and M.item_charges(tooltip)
+            local auctionable = M.auctionable(tooltip, quality) and durability == max_durability and charges == max_charges and not lootable
+            if max_charges and not charges then
                 return
             end
             return {
@@ -36,14 +36,14 @@ function M.container_item(bag, slot)
                 item_key = item_id .. ':' .. suffix_id,
 
                 name = item_info.name,
-                texture = containerInfo.iconFileID,
+                texture = texture,
                 level = item_info.level,
-                quality = item_info.quality,
+                quality = quality,
                 max_stack = item_info.max_stack,
 
-                count = containerInfo.stackCount,
-                locked = containerInfo.isLocked,
-                readable = containerInfo.isReadable,
+                count = count,
+                locked = locked,
+                readable = readable,
                 auctionable = auctionable,
 
                 tooltip = tooltip,
@@ -53,39 +53,35 @@ function M.container_item(bag, slot)
 end
 
 function M.auction_sell_item()
-    if C_AuctionHouse then
-        local sell_item_location = C_AuctionHouse.GetSellItemLocation()
-        if sell_item_location then
-            local item_info = C_Item.GetItemInfo(sell_item_location)
-            local container_info = C_Container.GetContainerItemInfo(sell_item_location:GetBagAndSlot())
+	local name, texture, count, quality, usable, vendor_price = GetAuctionSellItemInfo()
+    if name then
         return {
-            name = item_info.itemName,
-            texture = item_info.itemIcon,
-            quality = item_info.itemQuality,
-            count = container_info.stackCount,
-            usable = item_info.isUsable,
-            vendor_price = item_info.itemSellPrice,
+			name = name,
+			texture = texture,
+            quality = quality,
+			count = count,
+			usable = usable,
+            vendor_price = vendor_price,
         }
-    end
-    return {}
+	end
 end
 
 function M.auction(index, query_type)
     query_type = query_type or 'list'
+    local name, texture, count, quality, usable, level, _, start_price, min_increment, buyout_price, high_bid, high_bidder, _, owner, _, sale_status, item_id, has_all_info = GetAuctionItemInfo(query_type, index)
 
-    if C_AuctionHouse then
-        local auction_info = C_AuctionHouse.GetItemInfoByIndex(query_type, index)
-
-        if auction_info and (aux.account_data.ignore_owner or auction_info.owner) then
-            local link = auction_info.itemLink
+    if has_all_info and (not aux.account_data.ignore_owner or not is_player(owner)) then
+        local link = GetAuctionItemLink(query_type, index)
         if not link then
             return
         end
 
-        local item_id, suffix_id, unique_id, enchant_id = parse_link(link)
-        local blizzard_bid = auction_info.highBid > 0 and auction_info.highBid or auction_info.startPrice
-        local bid_price = auction_info.highBid > 0 and (auction_info.highBid + auction_info.minIncrement) or auction_info.startPrice
+        local item_id, suffix_id, unique_id, enchant_id = M.parse_link(link)
 
+	local duration = GetAuctionItemTimeLeft(query_type, index)
+        local tooltip = M.tooltip('auction', query_type, index)
+        local blizzard_bid = high_bid > 0 and high_bid or start_price
+        local bid_price = high_bid > 0 and (high_bid + min_increment) or start_price
         return {
             item_id = item_id,
             suffix_id = suffix_id,
@@ -94,29 +90,31 @@ function M.auction(index, query_type)
 
             link = link,
             item_key = item_id .. ':' .. suffix_id,
-            search_signature = aux.join({item_id, suffix_id, enchant_id, auction_info.startPrice, auction_info.buyoutPrice, bid_price, auction_info.stackCount, auction_info.timeLeft, query_type == 'owner' and auction_info.highBidder or (auction_info.highBidder and 1 or 0), auction_info.saleStatus, aux.account_data.ignore_owner and (is_player(auction_info.owner) and 0 or 1) or (auction_info.owner or '?')}, ':'),
-            sniping_signature = aux.join({item_id, suffix_id, enchant_id, auction_info.startPrice, auction_info.buyoutPrice, auction_info.stackCount, aux.account_data.ignore_owner and (is_player(auction_info.owner) and 0 or 1) or (auction_info.owner or '?')}, ':'),
+            search_signature = aux.join({item_id, suffix_id, enchant_id, start_price, buyout_price, bid_price, count, sale_status == 1 and 0 or duration, query_type == 'owner' and high_bidder or (high_bidder and 1 or 0), sale_status, aux.account_data.ignore_owner and (is_player(owner) and 0 or 1) or (owner or '?')}, ':'),
+            sniping_signature = aux.join({item_id, suffix_id, enchant_id, start_price, buyout_price, count, aux.account_data.ignore_owner and (is_player(owner) and 0 or 1) or (owner or '?')}, ':'),
 
-            name = auction_info.name,
-            texture = auction_info.texture,
-            quality = auction_info.quality,
-            requirement = auction_info.level,
+            name = name,
+            texture = texture,
+            quality = quality,
+            requirement = level,
 
-            count = auction_info.stackCount,
-            start_price = auction_info.startPrice,
-            high_bid = auction_info.highBid,
-            min_increment = auction_info.minIncrement,
+            count = count,
+            start_price = start_price,
+            high_bid = high_bid,
+            min_increment = min_increment,
             blizzard_bid = blizzard_bid,
             bid_price = bid_price,
-            buyout_price = auction_info.buyoutPrice,
-            unit_blizzard_bid = blizzard_bid / auction_info.stackCount,
-            unit_bid_price = bid_price / auction_info.stackCount,
-            unit_buyout_price = auction_info.buyoutPrice / auction_info.stackCount,
-            high_bidder = auction_info.highBidder,
-            owner = auction_info.owner,
-            sale_status = auction_info.saleStatus,
-            duration = auction_info.timeLeft,
-            usable = auction_info.usable,
+            buyout_price = buyout_price,
+            unit_blizzard_bid = blizzard_bid / count,
+            unit_bid_price = bid_price / count,
+            unit_buyout_price = buyout_price / count,
+            high_bidder = high_bidder,
+            owner = owner,
+            sale_status = sale_status,
+            duration = duration,
+            usable = usable,
+
+            tooltip = tooltip,
         }
     end
 end
@@ -154,7 +152,7 @@ function M.tooltip_find(pattern, tooltip)
 end
 
 function M.display_name(item_id, no_brackets, no_color)
-	local item_info = item(item_id)
+	local item_info = M.item(item_id)
     if item_info then
         local name = item_info.name
         if not no_brackets then
@@ -173,7 +171,7 @@ function M.auctionable(tooltip, quality)
             and status ~= ITEM_BIND_ON_PICKUP
             and status ~= ITEM_BIND_QUEST
             and status ~= ITEM_SOULBOUND
-            and (not tooltip_match(ITEM_CONJURED, tooltip) or tooltip_find(ITEM_MIN_LEVEL, tooltip) > 1)
+            and (not M.tooltip_match(ITEM_CONJURED, tooltip) or M.tooltip_find(ITEM_MIN_LEVEL, tooltip) > 1)
 end
 
 function M.tooltip(setter, arg1, arg2)
@@ -206,7 +204,7 @@ do
         patterns[aux.pluralize(format(ITEM_SPELL_CHARGES, i))] = i
     end
 
-	function item_charges(tooltip)
+	function M.item_charges(tooltip)
         for _, entry in pairs(tooltip) do
             if patterns[entry] then
                 return patterns[entry]
@@ -217,29 +215,11 @@ end
 
 do
 	local data = {
-		-- wizard oil
-		[20744] = 5,
-		[20746] = 5,
-		[20750] = 5,
-		[20749] = 5,
-
-		-- mana oil
-		[20745] = 5,
-		[20747] = 5,
-		[20748] = 5,
-
-		-- discombobulator
+		[20744] = 5, [20746] = 5, [20750] = 5, [20749] = 5,
+		[20745] = 5, [20747] = 5, [20748] = 5,
 		[4388] = 5,
-
-		-- recombobulator
-		[4381] = 10,
-		[18637] = 10,
-
-        -- deflector
-        [4376] = 5,
-        [4386] = 5,
-
-		-- ... TODO
+		[4381] = 10, [18637] = 10,
+        [4376] = 5, [4386] = 5,
 	}
 	function M.max_item_charges(item_id)
 	    return data[item_id]
@@ -247,7 +227,7 @@ do
 end
 
 function M.item_key(link)
-    local item_id, suffix_id = parse_link(link)
+    local item_id, suffix_id = M.parse_link(link)
     return item_id .. ':' .. suffix_id
 end
 
@@ -271,12 +251,11 @@ function M.item(item_id, suffix_id)
         max_stack = max_stack,
         texture = texture,
         sell_price = sell_price
-    } or item_info(item_id)
+    }
 end
 
 function M.category_index(category)
     for i, v in ipairs(AuctionCategories) do
-        -- ignoring trailing s because sometimes type and category differ in number
         if gsub(strupper(v.name), 'S$', '') == gsub(strupper(category), 'S$', '') then
             return i, v.name
         end
@@ -285,7 +264,7 @@ end
 
 function M.subcategory_index(category_index, subcategory)
     if category_index > 0 then
-        for i, v in ipairs(AuctionCategories[category_index].subCategories or empty) do
+        for i, v in ipairs(AuctionCategories[category_index].subCategories or {}) do
             if strupper(v.name) == strupper(subcategory) then
                 return i, v.name
             end
@@ -295,7 +274,7 @@ end
 
 function M.subsubcategory_index(category_index, subcategory_index, subsubcategory)
     if category_index > 0 and subcategory_index > 0 then
-        for i, v in ipairs(AuctionCategories[category_index].subCategories[subcategory_index].subCategories or empty) do
+        for i, v in ipairs(AuctionCategories[category_index].subCategories[subcategory_index].subCategories or {}) do
             if strupper(v.name) == strupper(subsubcategory) then
                 return i, v.name
             end
@@ -315,12 +294,18 @@ end
 function M.inventory()
 	local bag, slot = 0, 0
 	return function()
-		if slot >= C_Container.GetContainerNumSlots(bag) then
-			repeat bag = bag + 1 until C_Container.GetContainerNumSlots(bag) > 0 or bag > 4
+		if slot >= GetContainerNumSlots(bag) then
+			repeat bag = bag + 1 until bag > 4 or GetContainerNumSlots(bag) > 0
 			slot = 1
 		else
 			slot = slot + 1
 		end
-		if bag <= 4 then return {bag, slot} end
+		if bag <= 4 then return bag, slot end
 	end
+end
+
+function is_player(name)
+    if not name then return false end
+    local _, class = GetPlayerInfoByRealm(name)
+    return class ~= nil
 end

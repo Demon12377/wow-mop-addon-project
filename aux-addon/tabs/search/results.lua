@@ -426,7 +426,7 @@ do
             end
         end
 
-        if C_AuctionHouse and C_AuctionHouse.CanQuery() then
+        if AuctionFrame and AuctionFrame:IsShown() and CanSendAuctionQuery() then
             if bid_enabled then
                 bid_button:Enable()
             else

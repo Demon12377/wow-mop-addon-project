@@ -148,11 +148,9 @@ function game_tooltip_hooks.SetItemByID(itemId)
 end
 
 function game_tooltip_hooks.SetAuctionItem(type, index)
-    if C_AuctionHouse then
-        local auction_info = C_AuctionHouse.GetItemInfoByIndex(type, index)
-        if auction_info and auction_info.itemLink then
-            extend_tooltip(GameTooltip, auction_info.itemLink, auction_info.stackCount)
-        end
+    local link = GetAuctionItemLink(type, index)
+    if link then
+        extend_tooltip(GameTooltip, link, select(3, GetAuctionItemInfo(type, index)))
     end
 end
 
@@ -239,12 +237,13 @@ function game_tooltip_hooks.SetTradeSkillItem(skill, slot)
 end
 
 function game_tooltip_hooks.SetAuctionSellItem()
-    if C_AuctionHouse then
-        local sell_item_location = C_AuctionHouse.GetSellItemLocation()
-        if sell_item_location then
-            local link = C_Item.GetItemLink(sell_item_location)
-            if link then
-                extend_tooltip(GameTooltip, link, C_Container.GetContainerItemInfo(sell_item_location:GetBagAndSlot()).stackCount)
+    local name, _, quantity = GetAuctionSellItemInfo()
+    if name then
+        for slot in info.inventory() do
+            local link = C_Container.GetContainerItemLink(unpack(slot))
+            if link and select(5, info.parse_link(link)) == name then
+                extend_tooltip(GameTooltip, link, quantity)
+                return
             end
         end
     end

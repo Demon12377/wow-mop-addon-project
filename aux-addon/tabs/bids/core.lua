@@ -7,7 +7,7 @@ local scan = require 'aux.core.scan'
 local tab = aux.tab 'Bids'
 
 function aux.event.AUX_LOADED()
-    aux.event_listener('AUCTION_BIDDER_ITEM_LIST_UPDATE', function()
+    aux.event_listener('AUCTION_BIDDER_LIST_UPDATE', function()
         locked = {}
         refresh = true
     end)
@@ -62,7 +62,7 @@ function on_update()
 
     local selection = listing:GetSelection()
     if selection then
-        if not (C_AuctionHouse and C_AuctionHouse.CanQuery()) then
+        if not CanSendAuctionQuery() then
             bid_button:Disable()
             buyout_button:Disable()
             return

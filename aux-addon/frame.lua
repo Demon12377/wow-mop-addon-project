@@ -74,7 +74,7 @@ do
     gui.set_size(btn, 60, 24)
     btn:SetText('Scan')
     btn:SetScript('OnUpdate', function(self)
-        if C_AuctionHouse and C_AuctionHouse.CanQuery() then
+        if AuctionFrame and AuctionFrame:IsShown() and select(2, CanSendAuctionQuery()) then
             self:Enable()
             self:SetBackdropColor(color.state.enabled())
         else

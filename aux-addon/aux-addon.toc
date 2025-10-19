@@ -16,8 +16,8 @@ frame.lua
 util\persistence.lua
 util\sort.lua
 util\money.lua
-core\cache.lua
 util\info.lua
+core\cache.lua
 core\history.lua
 core\disenchant.lua
 util\filter.lua
